@@ -273,46 +273,48 @@ def add_caseifer(text):
 model_dir = '16bit'
 device = 'cuda'
 dtype = 'bfloat16'
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-device_type = 'cuda' if 'cuda' in device else 'cpu'
-ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
-max_new_tokens = 2048 # number of tokens generated in each sample
-temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-top_k = 24 # retain only the top_k most likely tokens, clamp others to have 0 probability
-
-ckpt_path = os.path.join(model_dir, 'ckpt.pt')
-checkpoint = torch.load(ckpt_path, map_location=device)
-gptconf = GPTConfig(**checkpoint['model_args'])
-model = GPT(gptconf)
-state_dict = checkpoint['model']
-unwanted_prefix = '_orig_mod.'
-for k,v in list(state_dict.items()):
-    if k.startswith(unwanted_prefix):
-        state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-model.load_state_dict(state_dict)
-
-model.eval()
-model.to(device)
-meta_path = os.path.join(model_dir, 'meta.pkl')
-load_meta = os.path.exists(meta_path)
-with open(meta_path, 'rb') as f:
-    meta = pickle.load(f)
-# TODO want to make this more general to arbitrary encoder/decoder schemes
-stoi, itos = meta['stoi'], meta['itos']
-encode = lambda s: [stoi[c] for c in s]
-decode = lambda l: ''.join([itos[i] for i in l])
 
 class CharGPT(llm.Model):
     model_id = "chargpt"
-      
+
+
     def execute(self, prompt, stream, response, conversation):
+        
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        device_type = 'cuda' if 'cuda' in device else 'cpu'
+        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+        ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+        max_new_tokens = 2048 # number of tokens generated in each sample
+        temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
+        top_k = 24 # retain only the top_k most likely tokens, clamp others to have 0 probability
+
+        ckpt_path = os.path.join(model_dir, 'ckpt.pt')
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        gptconf = GPTConfig(**checkpoint['model_args'])
+        model = GPT(gptconf)
+        state_dict = checkpoint['model']
+        unwanted_prefix = '_orig_mod.'
+        for k,v in list(state_dict.items()):
+            if k.startswith(unwanted_prefix):
+                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+        model.load_state_dict(state_dict)
+
+        model.eval()
+        model.to(device)
+        meta_path = os.path.join(model_dir, 'meta.pkl')
+        with open(meta_path, 'rb') as f:
+            meta = pickle.load(f)
+        # TODO want to make this more general to arbitrary encoder/decoder schemes
+        stoi, itos = meta['stoi'], meta['itos']
+        encode = lambda s: [stoi[c] for c in s]
+        decode = lambda l: ''.join([itos[i] for i in l])
         text = prompt.prompt
         shift = False  
        # generated_text = ''
         start_ids = encode(add_caseifer(text))
         x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+        print(text, end='', flush=True)
         for idx_next in model.generate_streaming(x, max_new_tokens, temperature=temperature, top_k=top_k):
             # convert the index to a character and print it to the screen
             char = decode([idx_next])

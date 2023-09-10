@@ -1,6 +1,6 @@
 [project]
 name = "chargpt"
-version = "0.1"
+version = "0.2"
 
 [project.entry-points.llm]
 chargpt = "llm_chargpt"
